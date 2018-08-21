@@ -12,7 +12,16 @@ import (
 	"github.com/erictg/saml"
 	"github.com/erictg/saml/logger"
 	"github.com/zenazn/goji/web"
+	"github.com/gin-gonic/gin"
 )
+
+type ILogin interface {
+	Authenticate(user *IUser, checkPass string) (bool, error)
+}
+
+type ILookup interface {
+	GetUserFromEmail(email string) (IUser, error)
+}
 
 // Options represent the parameters to New() for creating a new IDP server
 type Options struct {
@@ -21,6 +30,8 @@ type Options struct {
 	Logger      logger.Interface
 	Certificate *x509.Certificate
 	Store       Store
+	LoginHandler	ILogin
+	LookupHandler	ILookup
 }
 
 // Server represents an IDP server. The server provides the following URLs:
@@ -40,6 +51,9 @@ type Server struct {
 	serviceProviders map[string]*saml.EntityDescriptor
 	IDP              saml.IdentityProvider // the underlying IDP
 	Store            Store                 // the data store
+	LoginHandler	ILogin
+	LookupHandler	ILookup
+	Domain			string
 }
 
 // New returns a new Server
@@ -80,41 +94,41 @@ func New(opts Options) (*Server, error) {
 // is called automatically for you by New, but you may need to call it
 // yourself if you don't create the object using New.)
 func (s *Server) InitializeHTTP() {
-	mux := web.New()
-	s.Handler = mux
+	e := gin.New()
 
-	mux.Get("/metadata", func(w http.ResponseWriter, r *http.Request) {
+	e.GET("/metadata", func(c *gin.Context) {
 		s.idpConfigMu.RLock()
 		defer s.idpConfigMu.RUnlock()
-		s.IDP.ServeMetadata(w, r)
+		s.IDP.ServeMetadata(c)
 	})
-	mux.Handle("/sso", func(w http.ResponseWriter, r *http.Request) {
+	e.GET("/sso", func(c *gin.Context) {
 		s.idpConfigMu.RLock()
 		defer s.idpConfigMu.RUnlock()
-		s.IDP.ServeSSO(w, r)
+		s.IDP.ServeSSO(c)
 	})
 
-	mux.Handle("/login", s.HandleLogin)
+	e.POST("/login", s.HandlePostLogin)
+	e.GET("/login", s.HandlePostLogin)
 	mux.Handle("/login/:shortcut", s.HandleIDPInitiated)
 	mux.Handle("/login/:shortcut/*", s.HandleIDPInitiated)
 
-	mux.Get("/services/", s.HandleListServices)
-	mux.Get("/services/:id", s.HandleGetService)
-	mux.Put("/services/:id", s.HandlePutService)
-	mux.Post("/services/:id", s.HandlePutService)
-	mux.Delete("/services/:id", s.HandleDeleteService)
+	e.GET("/services/", s.HandleListServices)
+	e.GET("/services/:id", s.HandleGetService)
+	e.PUT("/services/:id", s.HandlePutService)
+	e.POST("/services/:id", s.HandlePutService)
+	e.DELETE("/services/:id", s.HandleDeleteService)
 
-	mux.Get("/users/", s.HandleListUsers)
-	mux.Get("/users/:id", s.HandleGetUser)
-	mux.Put("/users/:id", s.HandlePutUser)
-	mux.Delete("/users/:id", s.HandleDeleteUser)
+	e.GET("/users/", s.HandleListUsers)
+	e.GET("/users/:id", s.HandleGetUser)
+	e.PUT("/users/:id", s.HandlePutUser)
+	e.DELETE("/users/:id", s.HandleDeleteUser)
 
-	mux.Get("/sessions/", s.HandleListSessions)
-	mux.Get("/sessions/:id", s.HandleGetSession)
-	mux.Delete("/sessions/:id", s.HandleDeleteSession)
+	e.GET("/sessions/", s.HandleListSessions)
+	e.GET("/sessions/:id", s.HandleGetSession)
+	e.DELETE("/sessions/:id", s.HandleDeleteSession)
 
-	mux.Get("/shortcuts/", s.HandleListShortcuts)
-	mux.Get("/shortcuts/:id", s.HandleGetShortcut)
-	mux.Put("/shortcuts/:id", s.HandlePutShortcut)
-	mux.Delete("/shortcuts/:id", s.HandleDeleteShortcut)
+	e.GET("/shortcuts/", s.HandleListShortcuts)
+	e.GET("/shortcuts/:id", s.HandleGetShortcut)
+	e.PUT("/shortcuts/:id", s.HandlePutShortcut)
+	e.DELETE("/shortcuts/:id", s.HandleDeleteShortcut)
 }

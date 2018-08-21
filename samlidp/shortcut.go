@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/zenazn/goji/web"
+	"github.com/gin-gonic/gin"
 )
 
 // Shortcut represents an IDP-initiated SAML flow. When a user
@@ -86,12 +87,15 @@ func (s *Server) HandleDeleteShortcut(c web.C, w http.ResponseWriter, r *http.Re
 // HandleIDPInitiated handles a request for an IDP initiated login flow. It looks up
 // the specified shortcut, generates the appropriate SAML assertion and redirects the
 // user via the HTTP-POST binding to the service providers ACS URL.
-func (s *Server) HandleIDPInitiated(c web.C, w http.ResponseWriter, r *http.Request) {
-	shortcutName := c.URLParams["shortcut"]
+func (s *Server) HandleIDPInitiated(c *gin.Context) {
+	shortcutName := c.Param("shortcut")
 	shortcut := Shortcut{}
 	if err := s.Store.Get(fmt.Sprintf("/shortcuts/%s", shortcutName), &shortcut); err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 
@@ -100,10 +104,11 @@ func (s *Server) HandleIDPInitiated(c web.C, w http.ResponseWriter, r *http.Requ
 	case shortcut.RelayState != nil:
 		relayState = *shortcut.RelayState
 	case shortcut.URISuffixAsRelayState:
-		relayState, _ = c.URLParams["*"]
+		// todo double check this
+		relayState = c.Param("*")
 	}
 
 	s.idpConfigMu.RLock()
 	defer s.idpConfigMu.RUnlock()
-	s.IDP.ServeIDPInitiated(w, r, shortcut.ServiceProviderID, relayState)
+	s.IDP.ServeIDPInitiated(c, shortcut.ServiceProviderID, relayState)
 }

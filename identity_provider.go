@@ -23,6 +23,7 @@ import (
 	"github.com/erictg/saml/logger"
 	"github.com/erictg/saml/xmlenc"
 	dsig "github.com/russellhaering/goxmldsig"
+	"github.com/gin-gonic/gin"
 )
 
 // Session represents a user session. It is returned by the
@@ -51,7 +52,7 @@ type SessionProvider interface {
 	//
 	// If (and only if) the request is not associated with a session then GetSession
 	// must complete the HTTP request and return nil.
-	GetSession(w http.ResponseWriter, r *http.Request, req *IdpAuthnRequest) *Session
+	GetSession(c *gin.Context, req *IdpAuthnRequest) *Session
 }
 
 // ServiceProviderProvider is an interface used by IdentityProvider to look up
@@ -153,18 +154,19 @@ func (idp *IdentityProvider) Metadata() *EntityDescriptor {
 
 // Handler returns an http.Handler that serves the metadata and SSO
 // URLs
-func (idp *IdentityProvider) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc(idp.MetadataURL.Path, idp.ServeMetadata)
-	mux.HandleFunc(idp.SSOURL.Path, idp.ServeSSO)
-	return mux
+func (idp *IdentityProvider) Handler() *gin.Engine {
+	e := gin.New()
+	// todo check what these are
+	e.GET(idp.MetadataURL.Path, idp.ServeMetadata)
+	e.GET(idp.SSOURL.Path, idp.ServeSSO)
+	return e
 }
 
 // ServeMetadata is an http.HandlerFunc that serves the IDP metadata
-func (idp *IdentityProvider) ServeMetadata(w http.ResponseWriter, r *http.Request) {
+func (idp *IdentityProvider) ServeMetadata(c *gin.Context) {
 	buf, _ := xml.MarshalIndent(idp.Metadata(), "", "  ")
-	w.Header().Set("Content-Type", "application/samlmetadata+xml")
-	w.Write(buf)
+	c.Header("Content-Type", "application/samlmetadata+xml")
+	c.Writer.Write(buf)
 }
 
 // ServeSSO handles SAML auth requests.
@@ -184,24 +186,30 @@ func (idp *IdentityProvider) ServeMetadata(w http.ResponseWriter, r *http.Reques
 //
 // If the assertion cannot be created or returned, a StatusInternalServerError
 // response is sent.
-func (idp *IdentityProvider) ServeSSO(w http.ResponseWriter, r *http.Request) {
-	req, err := NewIdpAuthnRequest(idp, r)
+func (idp *IdentityProvider) ServeSSO(c *gin.Context) {
+	req, err := NewIdpAuthnRequest(idp, c.Request)
 	if err != nil {
 		idp.Logger.Printf("failed to parse request: %s", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 
 	if err := req.Validate(); err != nil {
 		idp.Logger.Printf("failed to validate request: %s", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 
 	// TODO(ross): we must check that the request ID has not been previously
 	//   issued.
 
-	session := idp.SessionProvider.GetSession(w, r, req)
+	session := idp.SessionProvider.GetSession(c, req)
 	if session == nil {
 		return
 	}
@@ -212,12 +220,18 @@ func (idp *IdentityProvider) ServeSSO(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := assertionMaker.MakeAssertion(req, session); err != nil {
 		idp.Logger.Printf("failed to make assertion: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	if err := req.WriteResponse(w); err != nil {
+	if err := req.WriteResponse(c.Writer); err != nil {
 		idp.Logger.Printf("failed to write response: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 }
@@ -225,15 +239,15 @@ func (idp *IdentityProvider) ServeSSO(w http.ResponseWriter, r *http.Request) {
 // ServeIDPInitiated handes an IDP-initiated authorization request. Requests of this
 // type require us to know a registered service provider and (optionally) the RelayState
 // that will be passed to the application.
-func (idp *IdentityProvider) ServeIDPInitiated(w http.ResponseWriter, r *http.Request, serviceProviderID string, relayState string) {
+func (idp *IdentityProvider) ServeIDPInitiated(c *gin.Context, serviceProviderID string, relayState string) {
 	req := &IdpAuthnRequest{
 		IDP:         idp,
-		HTTPRequest: r,
+		HTTPRequest: c.Request,
 		RelayState:  relayState,
 		Now:         TimeNow(),
 	}
 
-	session := idp.SessionProvider.GetSession(w, r, req)
+	session := idp.SessionProvider.GetSession(c, req)
 	if session == nil {
 		// If GetSession returns nil, it must have written an HTTP response, per the interface
 		// (this is probably because it drew a login form or something)
@@ -241,14 +255,19 @@ func (idp *IdentityProvider) ServeIDPInitiated(w http.ResponseWriter, r *http.Re
 	}
 
 	var err error
-	req.ServiceProviderMetadata, err = idp.ServiceProviderProvider.GetServiceProvider(r, serviceProviderID)
+	req.ServiceProviderMetadata, err = idp.ServiceProviderProvider.GetServiceProvider(c.Request, serviceProviderID)
 	if err == os.ErrNotExist {
 		idp.Logger.Printf("cannot find service provider: %s", serviceProviderID)
-		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-		return
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 	} else if err != nil {
 		idp.Logger.Printf("cannot find service provider %s: %v", serviceProviderID, err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 
@@ -267,7 +286,10 @@ func (idp *IdentityProvider) ServeIDPInitiated(w http.ResponseWriter, r *http.Re
 	}
 	if req.ACSEndpoint == nil {
 		idp.Logger.Printf("saml metadata does not contain an Assertion Customer Service url")
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "saml metadata does not contain an Assertion Customer Service url",
+		})
+		c.Abort()
 		return
 	}
 
@@ -277,13 +299,19 @@ func (idp *IdentityProvider) ServeIDPInitiated(w http.ResponseWriter, r *http.Re
 	}
 	if err := assertionMaker.MakeAssertion(req, session); err != nil {
 		idp.Logger.Printf("failed to make assertion: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 
-	if err := req.WriteResponse(w); err != nil {
+	if err := req.WriteResponse(c.Writer); err != nil {
 		idp.Logger.Printf("failed to write response: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 }

@@ -9,17 +9,28 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// User represents a stored user. The data here are used to
+// IUser represents an abstraction of a stored user. The data here are used to
 // populate user once the user has authenticated.
-type User struct {
-	Name              string   `json:"name"`
-	PlaintextPassword *string  `json:"password,omitempty"` // not stored
-	HashedPassword    []byte   `json:"hashed_password,omitempty"`
-	Groups            []string `json:"groups,omitempty"`
-	Email             string   `json:"email,omitempty"`
-	CommonName        string   `json:"common_name,omitempty"`
-	Surname           string   `json:"surname,omitempty"`
-	GivenName         string   `json:"given_name,omitempty"`
+type IUser interface {
+	GetId() string
+	GetName() string
+	GetPasswordHash() []byte
+	GetSalt() string
+	GetGroups() []string
+	GetEmail() string
+	GetCommonName() string
+	GetSurname() string
+	GetGivenName() string
+
+	SetId(string)
+	SetName(string)
+	SetPasswordHash([]byte)
+	SetSalt([]byte)
+	SetGroups([]string)
+	SetEmail(string)
+	SetCommonName(string)
+	SetSurname(string)
+	SetGivenName(string)
 }
 
 // HandleListUsers handles the `GET /users/` request and responds with a JSON formatted list
