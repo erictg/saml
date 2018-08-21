@@ -7,7 +7,7 @@ Package saml contains a partial implementation of the SAML standard in golang.
 SAML is a standard for identity federation, i.e. either allowing a third party to authenticate your users or allowing third parties to rely on us to authenticate their users.
 
 ## Fork changes
-The purpose of this for is to support the [gin-gonic](https://github.com/gin-gonic/gin) web framework.
+The purpose of this fork is to support the [gin-gonic](https://github.com/gin-gonic/gin) web framework.
 
 ## Introduction
 
