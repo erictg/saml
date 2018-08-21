@@ -6,6 +6,9 @@
 Package saml contains a partial implementation of the SAML standard in golang.
 SAML is a standard for identity federation, i.e. either allowing a third party to authenticate your users or allowing third parties to rely on us to authenticate their users.
 
+## Fork changes
+The purpose of this for is to support the [gin-gonic](https://github.com/gin-gonic/gin) web framework.
+
 ## Introduction
 
 In SAML parlance an **Identity Provider** (IDP) is a service that knows how to authenticate users. A **Service Provider** (SP) is a service that delegates authentication to an IDP. If you are building a service where users log in with someone else's credentials, then you are a **Service Provider**. This package supports implementing both service providers and identity providers.
