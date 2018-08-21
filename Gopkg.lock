@@ -8,7 +8,7 @@
   version = "v1.0.1"
 
 [[projects]]
-  name = "github.com/crewjam/saml"
+  name = "github.com/erictg/saml"
   packages = [
     ".",
     "logger",

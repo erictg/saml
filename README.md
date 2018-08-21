@@ -1,5 +1,5 @@
 # SAML
-[![](https://godoc.org/github.com/crewjam/saml?status.svg)](http://godoc.org/github.com/crewjam/saml)
+[![](https://godoc.org/github.com/erictg/saml?status.svg)](http://godoc.org/github.com/erictg/saml)
 
 [![Build Status](https://travis-ci.org/crewjam/saml.svg?branch=master)](https://travis-ci.org/crewjam/saml)
 
@@ -68,7 +68,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/crewjam/saml/samlsp"
+	"github.com/erictg/saml/samlsp"
 )
 
 func hello(w http.ResponseWriter, r *http.Request) {

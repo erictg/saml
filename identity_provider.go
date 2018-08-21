@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/beevik/etree"
-	"github.com/crewjam/saml/logger"
-	"github.com/crewjam/saml/xmlenc"
+	"github.com/erictg/saml/logger"
+	"github.com/erictg/saml/xmlenc"
 	dsig "github.com/russellhaering/goxmldsig"
 )
 
