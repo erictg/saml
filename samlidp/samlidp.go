@@ -11,7 +11,6 @@ import (
 
 	"github.com/erictg/saml"
 	"github.com/erictg/saml/logger"
-	"github.com/zenazn/goji/web"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +20,7 @@ type ILogin interface {
 
 type ILookup interface {
 	GetUserFromEmail(email string) (IUser, error)
+	GetUserFromId(id string) (IUser, error)
 }
 
 // Options represent the parameters to New() for creating a new IDP server
@@ -93,7 +93,7 @@ func New(opts Options) (*Server, error) {
 // InitializeHTTP sets up the HTTP handler for the server. (This function
 // is called automatically for you by New, but you may need to call it
 // yourself if you don't create the object using New.)
-func (s *Server) InitializeHTTP() {
+func (s *Server) InitializeHTTP() *gin.Engine{
 	e := gin.New()
 
 	e.GET("/metadata", func(c *gin.Context) {
@@ -101,7 +101,7 @@ func (s *Server) InitializeHTTP() {
 		defer s.idpConfigMu.RUnlock()
 		s.IDP.ServeMetadata(c)
 	})
-	e.GET("/sso", func(c *gin.Context) {
+	e.POST("/sso", func(c *gin.Context) {
 		s.idpConfigMu.RLock()
 		defer s.idpConfigMu.RUnlock()
 		s.IDP.ServeSSO(c)
@@ -109,8 +109,8 @@ func (s *Server) InitializeHTTP() {
 
 	e.POST("/login", s.HandlePostLogin)
 	e.GET("/login", s.HandlePostLogin)
-	mux.Handle("/login/:shortcut", s.HandleIDPInitiated)
-	mux.Handle("/login/:shortcut/*", s.HandleIDPInitiated)
+	e.GET("/login/:shortcut", s.HandleIDPInitiated)
+	//e.GET("/login/:shortcut/*", s.HandleIDPInitiated)
 
 	e.GET("/services/", s.HandleListServices)
 	e.GET("/services/:id", s.HandleGetService)
@@ -131,4 +131,6 @@ func (s *Server) InitializeHTTP() {
 	e.GET("/shortcuts/:id", s.HandleGetShortcut)
 	e.PUT("/shortcuts/:id", s.HandlePutShortcut)
 	e.DELETE("/shortcuts/:id", s.HandleDeleteShortcut)
+
+	return e
 }

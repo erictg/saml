@@ -52,7 +52,7 @@ type SessionProvider interface {
 	//
 	// If (and only if) the request is not associated with a session then GetSession
 	// must complete the HTTP request and return nil.
-	GetSession(c *gin.Context, req *IdpAuthnRequest) *Session
+	GetSession(c *gin.Context, req *IdpAuthnRequest) (*Session, error)
 }
 
 // ServiceProviderProvider is an interface used by IdentityProvider to look up
@@ -209,8 +209,8 @@ func (idp *IdentityProvider) ServeSSO(c *gin.Context) {
 	// TODO(ross): we must check that the request ID has not been previously
 	//   issued.
 
-	session := idp.SessionProvider.GetSession(c, req)
-	if session == nil {
+	session, err := idp.SessionProvider.GetSession(c, req)
+	if err != nil {
 		return
 	}
 
@@ -247,14 +247,13 @@ func (idp *IdentityProvider) ServeIDPInitiated(c *gin.Context, serviceProviderID
 		Now:         TimeNow(),
 	}
 
-	session := idp.SessionProvider.GetSession(c, req)
-	if session == nil {
+	session, err := idp.SessionProvider.GetSession(c, req)
+	if err != nil {
 		// If GetSession returns nil, it must have written an HTTP response, per the interface
 		// (this is probably because it drew a login form or something)
 		return
 	}
 
-	var err error
 	req.ServiceProviderMetadata, err = idp.ServiceProviderProvider.GetServiceProvider(c.Request, serviceProviderID)
 	if err == os.ErrNotExist {
 		idp.Logger.Printf("cannot find service provider: %s", serviceProviderID)

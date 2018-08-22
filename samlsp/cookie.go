@@ -19,7 +19,7 @@ type ClientState interface {
 // ClientToken implements client side storage for signed authorization tokens.
 type ClientToken interface {
 	GetToken(r *http.Request) string
-	SetToken(w http.ResponseWriter, r *http.Request, value string, maxAge time.Duration)
+	SetToken(z, value string, maxAge time.Duration)
 }
 
 const stateCookiePrefix = "saml_"

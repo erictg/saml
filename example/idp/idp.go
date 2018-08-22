@@ -9,8 +9,7 @@ import (
 
 	"github.com/erictg/saml/logger"
 	"github.com/erictg/saml/samlidp"
-	"github.com/zenazn/goji"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/erictg/saml/example/idp/interface_impls"
 )
 
 var key = func() crypto.PrivateKey {
@@ -90,32 +89,42 @@ func main() {
 		logr.Fatalf("%s", err)
 	}
 
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("hunter2"), bcrypt.DefaultCost)
-	err = idpServer.Store.Put("/users/alice", samlidp.User{Name: "alice",
-		HashedPassword: hashedPassword,
+	u1 := interface_impls.User{
+		Name: "alice",
+		PasswordHash: "adadfasdfasd",
 		Groups:         []string{"Administrators", "Users"},
 		Email:          "alice@example.com",
 		CommonName:     "Alice Smith",
 		Surname:        "Smith",
 		GivenName:      "Alice",
-	})
+		Id: "adfasdfasedf",
+		Salt: "asdfasdfasdf",
+
+	}
+
+	err = idpServer.Store.Put(samlidp.CreateUserKey(u1), u1)
 	if err != nil {
 		logr.Fatalf("%s", err)
 	}
 
-	err = idpServer.Store.Put("/users/bob", samlidp.User{
+	u2 := interface_impls.User{
 		Name:           "bob",
-		HashedPassword: hashedPassword,
+		PasswordHash: "adfasdfasdfas",
 		Groups:         []string{"Users"},
 		Email:          "bob@example.com",
 		CommonName:     "Bob Smith",
 		Surname:        "Smith",
 		GivenName:      "Bob",
-	})
+		Id: "adfasdfasedf",
+		Salt: "asdfasdfasdf",
+	}
+
+	err = idpServer.Store.Put(samlidp.CreateUserKey(u2), u2)
 	if err != nil {
 		logr.Fatalf("%s", err)
 	}
 
-	goji.Handle("/*", idpServer)
-	goji.Serve()
+	e := idpServer.InitializeHTTP()
+
+	e.Run(":8080")
 }

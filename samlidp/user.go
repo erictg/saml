@@ -1,12 +1,11 @@
 package samlidp
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"github.com/zenazn/goji/web"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/gin-gonic/gin"
+	"github.com/erictg/saml/dto"
 )
 
 // IUser represents an abstraction of a stored user. The data here are used to
@@ -14,7 +13,7 @@ import (
 type IUser interface {
 	GetId() string
 	GetName() string
-	GetPasswordHash() []byte
+	GetPasswordHash() string
 	GetSalt() string
 	GetGroups() []string
 	GetEmail() string
@@ -22,99 +21,120 @@ type IUser interface {
 	GetSurname() string
 	GetGivenName() string
 
-	SetId(string)
-	SetName(string)
-	SetPasswordHash([]byte)
-	SetSalt([]byte)
-	SetGroups([]string)
-	SetEmail(string)
-	SetCommonName(string)
-	SetSurname(string)
-	SetGivenName(string)
+	SetId(id string)
+	SetName(name string)
+	SetPassword(password string) error
+	SetSalt(salt string)
+	SetGroups(groups []string)
+	SetEmail(email string)
+	SetCommonName(cn string)
+	SetSurname(surname string)
+	SetGivenName(givenName string)
+
+	GetUser() interface{}
 }
 
 // HandleListUsers handles the `GET /users/` request and responds with a JSON formatted list
 // of user names.
-func (s *Server) HandleListUsers(c web.C, w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleListUsers(c *gin.Context) {
 	users, err := s.Store.List("/users/")
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 
-	json.NewEncoder(w).Encode(struct {
+	c.JSON(http.StatusOK,struct {
 		Users []string `json:"users"`
 	}{Users: users})
 }
 
+type serializeUser struct{
+	Id				string		`json:"id"`
+	Name			string		`json:"name"`
+	PasswordHash	string		`json:"password_hash"`
+	Salt			string		`json:"salt"`
+	Groups			[]string	`json:"groups"`
+	Email			string		`json:"email"`
+	CommonName		string		`json:"common_name"`
+	Surname			string		`json:"surname"`
+	GivenName		string		`json:"given_name"`
+}
+
 // HandleGetUser handles the `GET /users/:id` request and responds with the user object in JSON
 // format. The HashedPassword field is excluded.
-func (s *Server) HandleGetUser(c web.C, w http.ResponseWriter, r *http.Request) {
-	user := User{}
-	err := s.Store.Get(fmt.Sprintf("/users/%s", c.URLParams["id"]), &user)
+func (s *Server) HandleGetUser(c *gin.Context) {
+	var user serializeUser
+	err := s.Store.Get(fmt.Sprintf("/users/%s", c.Param("id")), &user)
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	user.HashedPassword = nil
-	json.NewEncoder(w).Encode(user)
+
+	c.JSON(http.StatusOK, user)
 }
 
 // HandlePutUser handles the `PUT /users/:id` request. It accepts a JSON formatted user object in
 // the request body and stores it. If the PlaintextPassword field is present then it is hashed
 // and stored in HashedPassword. If the PlaintextPassword field is not present then
 // HashedPassword retains it's stored value.
-func (s *Server) HandlePutUser(c web.C, w http.ResponseWriter, r *http.Request) {
-	user := User{}
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+func (s *Server) HandlePutUser(c *gin.Context) {
+	var userDto dto.UpdateUserDTO
+	if err := c.BindJSON(&userDto); err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	user.Name = c.URLParams["id"]
 
-	if user.PlaintextPassword != nil {
-		var err error
-		user.HashedPassword, err = bcrypt.GenerateFromPassword([]byte(*user.PlaintextPassword), bcrypt.DefaultCost)
+	user, err := s.LookupHandler.GetUserFromId(userDto.Id)
+
+	user.SetName(c.Param("id"))
+
+	if userDto.NewPassword != nil {
+		err := user.SetPassword(*userDto.NewPassword)
+
 		if err != nil {
 			s.logger.Printf("ERROR: %s", err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		existingUser := User{}
-		err := s.Store.Get(fmt.Sprintf("/users/%s", c.URLParams["id"]), &existingUser)
-		switch {
-		case err == nil:
-			user.HashedPassword = existingUser.HashedPassword
-		case err == ErrNotFound:
-			// nop
-		default:
-			s.logger.Printf("ERROR: %s", err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+			})
+			c.Abort()
 			return
 		}
 	}
-	user.PlaintextPassword = nil
 
-	err := s.Store.Put(fmt.Sprintf("/users/%s", c.URLParams["id"]), &user)
+	err = s.Store.Put(fmt.Sprintf("/users/%s", userDto.Id), &user)
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
 // HandleDeleteUser handles the `DELETE /users/:id` request.
-func (s *Server) HandleDeleteUser(c web.C, w http.ResponseWriter, r *http.Request) {
-	err := s.Store.Delete(fmt.Sprintf("/users/%s", c.URLParams["id"]))
+func (s *Server) HandleDeleteUser(c *gin.Context) {
+	err := s.Store.Delete(fmt.Sprintf("/users/%s", c.Param("id")))
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }

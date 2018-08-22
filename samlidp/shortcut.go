@@ -1,11 +1,9 @@
 package samlidp
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"github.com/zenazn/goji/web"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,56 +30,71 @@ type Shortcut struct {
 
 // HandleListShortcuts handles the `GET /shortcuts/` request and responds with a JSON formatted list
 // of shortcut names.
-func (s *Server) HandleListShortcuts(c web.C, w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleListShortcuts(c *gin.Context) {
 	shortcuts, err := s.Store.List("/shortcuts/")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
 
-	json.NewEncoder(w).Encode(struct {
+	c.JSON(http.StatusOK, struct {
 		Shortcuts []string `json:"shortcuts"`
 	}{Shortcuts: shortcuts})
 }
 
 // HandleGetShortcut handles the `GET /shortcuts/:id` request and responds with the shortcut
 // object in JSON format.
-func (s *Server) HandleGetShortcut(c web.C, w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleGetShortcut(c *gin.Context) {
 	shortcut := Shortcut{}
-	err := s.Store.Get(fmt.Sprintf("/shortcuts/%s", c.URLParams["id"]), &shortcut)
+	err := s.Store.Get(fmt.Sprintf("/shortcuts/%s", c.Param("id")), &shortcut)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	json.NewEncoder(w).Encode(shortcut)
+	c.JSON(http.StatusOK, shortcut)
 }
 
 // HandlePutShortcut handles the `PUT /shortcuts/:id` request. It accepts a JSON formatted
 // shortcut object in the request body and stores it.
-func (s *Server) HandlePutShortcut(c web.C, w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandlePutShortcut(c *gin.Context) {
 	shortcut := Shortcut{}
-	if err := json.NewDecoder(r.Body).Decode(&shortcut); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	if err := c.BindJSON(&shortcut); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	shortcut.Name = c.URLParams["id"]
+	shortcut.Name = c.Param("id")
 
-	err := s.Store.Put(fmt.Sprintf("/shortcuts/%s", c.URLParams["id"]), &shortcut)
+	err := s.Store.Put(fmt.Sprintf("/shortcuts/%s", c.Param("id")), &shortcut)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
 // HandleDeleteShortcut handles the `DELETE /shortcuts/:id` request.
-func (s *Server) HandleDeleteShortcut(c web.C, w http.ResponseWriter, r *http.Request) {
-	err := s.Store.Delete(fmt.Sprintf("/shortcuts/%s", c.URLParams["id"]))
+func (s *Server) HandleDeleteShortcut(c *gin.Context) {
+	err := s.Store.Delete(fmt.Sprintf("/shortcuts/%s", c.Param("id")))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		c.Abort()
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
 // HandleIDPInitiated handles a request for an IDP initiated login flow. It looks up
