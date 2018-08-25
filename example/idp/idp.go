@@ -4,12 +4,12 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
-	"flag"
 	"net/url"
 
 	"github.com/erictg/saml/logger"
 	"github.com/erictg/saml/samlidp"
 	"github.com/erictg/saml/example/idp/interface_impls"
+	"github.com/zenazn/goji"
 )
 
 var key = func() crypto.PrivateKey {
@@ -70,23 +70,10 @@ UzreO96WzlBBMtY=
 
 func main() {
 	logr := logger.DefaultLogger
-	baseURLstr := flag.String("idp", "", "The URL to the IDP")
-	flag.Parse()
 
-	baseURL, err := url.Parse(*baseURLstr)
+	baseURL, err := url.Parse("localhost:8000/sso")
 	if err != nil {
 		logr.Fatalf("cannot parse base URL: %v", err)
-	}
-
-	idpServer, err := samlidp.New(samlidp.Options{
-		URL:         *baseURL,
-		Key:         key,
-		Logger:      logr,
-		Certificate: cert,
-		Store:       &samlidp.MemoryStore{},
-	})
-	if err != nil {
-		logr.Fatalf("%s", err)
 	}
 
 	u1 := interface_impls.User{
@@ -102,10 +89,6 @@ func main() {
 
 	}
 
-	err = idpServer.Store.Put(samlidp.CreateUserKey(u1), u1)
-	if err != nil {
-		logr.Fatalf("%s", err)
-	}
 
 	u2 := interface_impls.User{
 		Name:           "bob",
@@ -119,12 +102,32 @@ func main() {
 		Salt: "asdfasdfasdf",
 	}
 
+	lookupProvider := interface_impls.NewLookupProvider(u2, u1)
+	authProvider := interface_impls.AuthenticationProvider{}
+
+	idpServer, err := samlidp.New(samlidp.Options{
+		URL:         *baseURL,
+		Key:         key,
+		Logger:      logr,
+		Certificate: cert,
+		Store:       &samlidp.MemoryStore{},
+		LookupHandler:lookupProvider,
+		AuthHandler: authProvider,
+	})
+	if err != nil {
+		logr.Fatalf("%s", err)
+	}
+
+	err = idpServer.Store.Put(samlidp.CreateUserKey(u1), u1)
+	if err != nil {
+		logr.Fatalf("%s", err)
+	}
+
 	err = idpServer.Store.Put(samlidp.CreateUserKey(u2), u2)
 	if err != nil {
 		logr.Fatalf("%s", err)
 	}
 
-	e := idpServer.InitializeHTTP()
-
-	e.Run(":8080")
+	goji.Handle("/*", idpServer)
+	goji.Serve()
 }

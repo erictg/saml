@@ -9,6 +9,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/crewjam/saml"
+  packages = [".","logger","xmlenc"]
+  revision = "9bb91e864923308363e4ac523b17451c9925f7b9"
+
+[[projects]]
+  branch = "master"
   name = "github.com/dchest/uniuri"
   packages = ["."]
   revision = "8902c56451e9b58ff940bbe5fec35d5f9c04584a"
@@ -80,6 +86,12 @@
   version = "1.0.1"
 
 [[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/russellhaering/goxmldsig"
   packages = [".","etreeutils","types"]
@@ -100,7 +112,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["bcrypt","blowfish","ripemd160"]
+  packages = ["ripemd160"]
   revision = "c126467f60eb25f8f27e5a981f32a87e3965053f"
 
 [[projects]]
@@ -130,6 +142,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2ade2707fb9f71b9ebd20711009bc6d4fb8eaab0e4f0ce8b9c043eeb4e1ca24b"
+  inputs-digest = "33241e3f9329dd9da76596fdf1b53b052fe0407d8e6e813e14295cf4b987821f"
   solver-name = "gps-cdcl"
   solver-version = 1

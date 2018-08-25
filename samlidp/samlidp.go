@@ -9,29 +9,21 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/erictg/saml"
-	"github.com/erictg/saml/logger"
-	"github.com/gin-gonic/gin"
+	"github.com/crewjam/saml"
+	"github.com/crewjam/saml/logger"
+	"github.com/zenazn/goji/web"
 )
 
-type ILogin interface {
-	Authenticate(user *IUser, checkPass string) (bool, error)
-}
-
-type ILookup interface {
-	GetUserFromEmail(email string) (IUser, error)
-	GetUserFromId(id string) (IUser, error)
-}
 
 // Options represent the parameters to New() for creating a new IDP server
 type Options struct {
-	URL         url.URL
-	Key         crypto.PrivateKey
-	Logger      logger.Interface
-	Certificate *x509.Certificate
-	Store       Store
-	LoginHandler	ILogin
-	LookupHandler	ILookup
+	URL           url.URL
+	Key           crypto.PrivateKey
+	Logger        logger.Interface
+	Certificate   *x509.Certificate
+	Store         IStore
+	AuthHandler   IAuthentication
+	LookupHandler ILookup
 }
 
 // Server represents an IDP server. The server provides the following URLs:
@@ -50,10 +42,10 @@ type Server struct {
 	logger           logger.Interface
 	serviceProviders map[string]*saml.EntityDescriptor
 	IDP              saml.IdentityProvider // the underlying IDP
-	Store            Store                 // the data store
-	LoginHandler	ILogin
-	LookupHandler	ILookup
-	Domain			string
+	Store            IStore                // the data store
+	AuthHandler      IAuthentication
+	LookupHandler    ILookup
+	Domain           string
 }
 
 // New returns a new Server
@@ -93,44 +85,42 @@ func New(opts Options) (*Server, error) {
 // InitializeHTTP sets up the HTTP handler for the server. (This function
 // is called automatically for you by New, but you may need to call it
 // yourself if you don't create the object using New.)
-func (s *Server) InitializeHTTP() *gin.Engine{
-	e := gin.New()
+func (s *Server) InitializeHTTP() {
+	mux := web.New()
+	s.Handler = mux
 
-	e.GET("/metadata", func(c *gin.Context) {
+	mux.Get("/metadata", func(w http.ResponseWriter, r *http.Request) {
 		s.idpConfigMu.RLock()
 		defer s.idpConfigMu.RUnlock()
-		s.IDP.ServeMetadata(c)
+		s.IDP.ServeMetadata(w, r)
 	})
-	e.POST("/sso", func(c *gin.Context) {
+	mux.Handle("/sso", func(w http.ResponseWriter, r *http.Request) {
 		s.idpConfigMu.RLock()
 		defer s.idpConfigMu.RUnlock()
-		s.IDP.ServeSSO(c)
+		s.IDP.ServeSSO(w, r)
 	})
 
-	e.POST("/login", s.HandlePostLogin)
-	e.GET("/login", s.HandlePostLogin)
-	e.GET("/login/:shortcut", s.HandleIDPInitiated)
-	//e.GET("/login/:shortcut/*", s.HandleIDPInitiated)
+	mux.Handle("/login", s.HandleLogin)
+	mux.Handle("/login/:shortcut", s.HandleIDPInitiated)
+	mux.Handle("/login/:shortcut/*", s.HandleIDPInitiated)
 
-	e.GET("/services/", s.HandleListServices)
-	e.GET("/services/:id", s.HandleGetService)
-	e.PUT("/services/:id", s.HandlePutService)
-	e.POST("/services/:id", s.HandlePutService)
-	e.DELETE("/services/:id", s.HandleDeleteService)
+	mux.Get("/services/", s.HandleListServices)
+	mux.Get("/services/:id", s.HandleGetService)
+	mux.Put("/services/:id", s.HandlePutService)
+	mux.Post("/services/:id", s.HandlePutService)
+	mux.Delete("/services/:id", s.HandleDeleteService)
 
-	e.GET("/users/", s.HandleListUsers)
-	e.GET("/users/:id", s.HandleGetUser)
-	e.PUT("/users/:id", s.HandlePutUser)
-	e.DELETE("/users/:id", s.HandleDeleteUser)
+	mux.Get("/users/", s.HandleListUsers)
+	mux.Get("/users/:id", s.HandleGetUser)
+	mux.Put("/users/:id", s.HandlePutUser)
+	mux.Delete("/users/:id", s.HandleDeleteUser)
 
-	e.GET("/sessions/", s.HandleListSessions)
-	e.GET("/sessions/:id", s.HandleGetSession)
-	e.DELETE("/sessions/:id", s.HandleDeleteSession)
+	mux.Get("/sessions/", s.HandleListSessions)
+	mux.Get("/sessions/:id", s.HandleGetSession)
+	mux.Delete("/sessions/:id", s.HandleDeleteSession)
 
-	e.GET("/shortcuts/", s.HandleListShortcuts)
-	e.GET("/shortcuts/:id", s.HandleGetShortcut)
-	e.PUT("/shortcuts/:id", s.HandlePutShortcut)
-	e.DELETE("/shortcuts/:id", s.HandleDeleteShortcut)
-
-	return e
+	mux.Get("/shortcuts/", s.HandleListShortcuts)
+	mux.Get("/shortcuts/:id", s.HandleGetShortcut)
+	mux.Put("/shortcuts/:id", s.HandlePutShortcut)
+	mux.Delete("/shortcuts/:id", s.HandleDeleteShortcut)
 }

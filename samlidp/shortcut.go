@@ -1,10 +1,11 @@
 package samlidp
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/zenazn/goji/web"
 )
 
 // Shortcut represents an IDP-initiated SAML flow. When a user
@@ -30,85 +31,67 @@ type Shortcut struct {
 
 // HandleListShortcuts handles the `GET /shortcuts/` request and responds with a JSON formatted list
 // of shortcut names.
-func (s *Server) HandleListShortcuts(c *gin.Context) {
+func (s *Server) HandleListShortcuts(c web.C, w http.ResponseWriter, r *http.Request) {
 	shortcuts, err := s.Store.List("/shortcuts/")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	c.JSON(http.StatusOK, struct {
+	json.NewEncoder(w).Encode(struct {
 		Shortcuts []string `json:"shortcuts"`
 	}{Shortcuts: shortcuts})
 }
 
 // HandleGetShortcut handles the `GET /shortcuts/:id` request and responds with the shortcut
 // object in JSON format.
-func (s *Server) HandleGetShortcut(c *gin.Context) {
+func (s *Server) HandleGetShortcut(c web.C, w http.ResponseWriter, r *http.Request) {
 	shortcut := Shortcut{}
-	err := s.Store.Get(fmt.Sprintf("/shortcuts/%s", c.Param("id")), &shortcut)
+	err := s.Store.Get(fmt.Sprintf("/shortcuts/%s", c.URLParams["id"]), &shortcut)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	c.JSON(http.StatusOK, shortcut)
+	json.NewEncoder(w).Encode(shortcut)
 }
 
 // HandlePutShortcut handles the `PUT /shortcuts/:id` request. It accepts a JSON formatted
 // shortcut object in the request body and stores it.
-func (s *Server) HandlePutShortcut(c *gin.Context) {
+func (s *Server) HandlePutShortcut(c web.C, w http.ResponseWriter, r *http.Request) {
 	shortcut := Shortcut{}
-	if err := c.BindJSON(&shortcut); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+	if err := json.NewDecoder(r.Body).Decode(&shortcut); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	shortcut.Name = c.Param("id")
+	shortcut.Name = c.URLParams["id"]
 
-	err := s.Store.Put(fmt.Sprintf("/shortcuts/%s", c.Param("id")), &shortcut)
+	err := s.Store.Put(fmt.Sprintf("/shortcuts/%s", c.URLParams["id"]), &shortcut)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleDeleteShortcut handles the `DELETE /shortcuts/:id` request.
-func (s *Server) HandleDeleteShortcut(c *gin.Context) {
-	err := s.Store.Delete(fmt.Sprintf("/shortcuts/%s", c.Param("id")))
+func (s *Server) HandleDeleteShortcut(c web.C, w http.ResponseWriter, r *http.Request) {
+	err := s.Store.Delete(fmt.Sprintf("/shortcuts/%s", c.URLParams["id"]))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleIDPInitiated handles a request for an IDP initiated login flow. It looks up
 // the specified shortcut, generates the appropriate SAML assertion and redirects the
 // user via the HTTP-POST binding to the service providers ACS URL.
-func (s *Server) HandleIDPInitiated(c *gin.Context) {
-	shortcutName := c.Param("shortcut")
+func (s *Server) HandleIDPInitiated(c web.C, w http.ResponseWriter, r *http.Request) {
+	shortcutName := c.URLParams["shortcut"]
 	shortcut := Shortcut{}
 	if err := s.Store.Get(fmt.Sprintf("/shortcuts/%s", shortcutName), &shortcut); err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -117,11 +100,10 @@ func (s *Server) HandleIDPInitiated(c *gin.Context) {
 	case shortcut.RelayState != nil:
 		relayState = *shortcut.RelayState
 	case shortcut.URISuffixAsRelayState:
-		// todo double check this
-		relayState = c.Param("*")
+		relayState, _ = c.URLParams["*"]
 	}
 
 	s.idpConfigMu.RLock()
 	defer s.idpConfigMu.RUnlock()
-	s.IDP.ServeIDPInitiated(c, shortcut.ServiceProviderID, relayState)
+	s.IDP.ServeIDPInitiated(w, r, shortcut.ServiceProviderID, relayState)
 }

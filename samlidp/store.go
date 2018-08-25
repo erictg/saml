@@ -6,7 +6,7 @@ import "errors"
 var ErrNotFound = errors.New("not found")
 
 // Store is an interface that describes an abstract key-value store.
-type Store interface {
+type IStore interface {
 	// Get fetches the data stored in `key` and unmarshals it into `value`.
 	Get(key string, value interface{}) error
 

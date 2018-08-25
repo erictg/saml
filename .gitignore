@@ -1,3 +1,5 @@
 coverage.out
 coverage.html
 vendor/
+example/trivial/myservice.cert
+example/trivial/myservice.key

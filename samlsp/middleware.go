@@ -9,7 +9,6 @@ import (
 
 	"github.com/erictg/saml"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/gin-gonic/gin"
 )
 
 // Middleware implements middleware than allows a web application
@@ -65,16 +64,16 @@ func randomBytes(n int) []byte {
 // ServeHTTP implements http.Handler and serves the SAML-specific HTTP endpoints
 // on the URIs specified by m.ServiceProvider.MetadataURL and
 // m.ServiceProvider.AcsURL.
-func (m *Middleware) ServeHTTP(g *gin.Context) {
-	if g.Request.URL.Path == m.ServiceProvider.MetadataURL.Path {
+func (m *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == m.ServiceProvider.MetadataURL.Path {
 		buf, _ := xml.MarshalIndent(m.ServiceProvider.Metadata(), "", "  ")
-		g.Header("Content-Type", "application/samlmetadata+xml")
-		g.Writer.Write(buf)
+		w.Header().Set("Content-Type", "application/samlmetadata+xml")
+		w.Write(buf)
 		return
 	}
 
-	if g.Request.URL.Path == m.ServiceProvider.AcsURL.Path {
-		g.r.ParseForm()
+	if r.URL.Path == m.ServiceProvider.AcsURL.Path {
+		r.ParseForm()
 		assertion, err := m.ServiceProvider.ParseResponse(r, m.getPossibleRequestIDs(r))
 		if err != nil {
 			if parseErr, ok := err.(*saml.InvalidResponseError); ok {

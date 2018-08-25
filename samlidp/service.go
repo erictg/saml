@@ -1,13 +1,14 @@
 package samlidp
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"net/http"
 	"os"
 
-	"github.com/erictg/saml"
-	"github.com/gin-gonic/gin"
+	"github.com/crewjam/saml"
+	"github.com/zenazn/goji/web"
 )
 
 // Service represents a configured SP for whom this IDP provides authentication services.
@@ -35,62 +36,50 @@ func (s *Server) GetServiceProvider(r *http.Request, serviceProviderID string) (
 
 // HandleListServices handles the `GET /services/` request and responds with a JSON formatted list
 // of service names.
-func (s *Server) HandleListServices(c *gin.Context) {
+func (s *Server) HandleListServices(c web.C, w http.ResponseWriter, r *http.Request) {
 	services, err := s.Store.List("/services/")
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	c.JSON(http.StatusOK, struct {
+	json.NewEncoder(w).Encode(struct {
 		Services []string `json:"services"`
 	}{Services: services})
 }
 
 // HandleGetService handles the `GET /services/:id` request and responds with the service
 // metadata in XML format.
-func (s *Server) HandleGetService(c *gin.Context) {
+func (s *Server) HandleGetService(c web.C, w http.ResponseWriter, r *http.Request) {
 	service := Service{}
-	id := c.Param("id")
-	err := s.Store.Get(fmt.Sprintf("/services/%s", id), &service)
+	err := s.Store.Get(fmt.Sprintf("/services/%s", c.URLParams["id"]), &service)
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
-	xml.NewEncoder(c.Writer).Encode(service.Metadata)
+	xml.NewEncoder(w).Encode(service.Metadata)
 }
 
 // HandlePutService handles the `PUT /shortcuts/:id` request. It accepts the XML-formatted
 // service metadata in the request body and stores it.
-func (s *Server) HandlePutService(c *gin.Context) {
+func (s *Server) HandlePutService(c web.C, w http.ResponseWriter, r *http.Request) {
 	service := Service{}
 
-	metadata, err := getSPMetadata(c.Request.Body)
+	metadata, err := getSPMetadata(r.Body)
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
 	service.Metadata = *metadata
 
-	err = s.Store.Put(fmt.Sprintf("/services/%s", c.Param("id")), &service)
+	err = s.Store.Put(fmt.Sprintf("/services/%s", c.URLParams["id"]), &service)
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -98,28 +87,22 @@ func (s *Server) HandlePutService(c *gin.Context) {
 	s.serviceProviders[service.Metadata.EntityID] = &service.Metadata
 	s.idpConfigMu.Unlock()
 
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleDeleteService handles the `DELETE /services/:id` request.
-func (s *Server) HandleDeleteService(c *gin.Context) {
+func (s *Server) HandleDeleteService(c web.C, w http.ResponseWriter, r *http.Request) {
 	service := Service{}
-	err := s.Store.Get(fmt.Sprintf("/services/%s", c.Param("id")), &service)
+	err := s.Store.Get(fmt.Sprintf("/services/%s", c.URLParams["id"]), &service)
 	if err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	if err := s.Store.Delete(fmt.Sprintf("/services/%s", c.Param("id"))); err != nil {
+	if err := s.Store.Delete(fmt.Sprintf("/services/%s", c.URLParams["id"])); err != nil {
 		s.logger.Printf("ERROR: %s", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		c.Abort()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -127,7 +110,7 @@ func (s *Server) HandleDeleteService(c *gin.Context) {
 	delete(s.serviceProviders, service.Metadata.EntityID)
 	s.idpConfigMu.Unlock()
 
-	c.Status(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // initializeServices reads all the stored services and initializes the underlying

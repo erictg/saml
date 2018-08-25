@@ -18,7 +18,8 @@ func hello(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	keyPair, err := tls.LoadX509KeyPair("myservice.cert", "myservice.key")
+	keyPair, err := tls.LoadX509KeyPair("/home/erictg97/mindstand_tech/saml_fork/src/github.com/erictg/saml/example/trivial/myservice.cert",
+		"/home/erictg97/mindstand_tech/saml_fork/src/github.com/erictg/saml/example/trivial/myservice.key")
 	if err != nil {
 		panic(err) // TODO handle error
 	}
@@ -27,12 +28,12 @@ func main() {
 		panic(err) // TODO handle error
 	}
 
-	idpMetadataURL, err := url.Parse("https://www.testshib.org/metadata/testshib-providers.xml")
+	idpMetadataURL, err := url.Parse("http://localhost:8000/metadata")
 	if err != nil {
 		panic(err) // TODO handle error
 	}
 
-	rootURL, err := url.Parse("http://localhost:8000")
+	rootURL, err := url.Parse("http://localhost:8080")
 	if err != nil {
 		panic(err) // TODO handle error
 	}
@@ -46,5 +47,7 @@ func main() {
 	app := http.HandlerFunc(hello)
 	http.Handle("/hello", samlSP.RequireAccount(app))
 	http.Handle("/saml/", samlSP)
-	http.ListenAndServe(":8000", nil)
+	http.ListenAndServe(":8080", nil)
+	c := make(chan bool)
+	<- c
 }

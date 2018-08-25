@@ -1,5 +1,10 @@
 package interface_impls
 
+import (
+	"github.com/erictg/saml/samlidp"
+	"github.com/pkg/errors"
+)
+
 type User struct{
 	Id				string		`json:"id"`
 	Name			string		`json:"name"`
@@ -88,4 +93,52 @@ func (u User) SetGivenName(givenName string) {
 func (u User) GetUser() interface{} {
 	return u
 }
+
+type AuthenticationProvider struct{
+
+}
+
+func (a AuthenticationProvider) Authenticate(user samlidp.IUser, checkPass string) (bool, error) {
+	return user.GetPasswordHash() == checkPass, nil
+}
+
+func (a AuthenticationProvider) HashPassword(newPassword string) (newHash string, salt string, err error) {
+	return newPassword, "dasdf",nil
+}
+
+type LookupProvider struct{
+	bob User
+	alice User
+}
+
+func NewLookupProvider(bob, alice User) LookupProvider{
+	return LookupProvider{
+		bob: bob,
+		alice: alice,
+	}
+}
+
+func (l LookupProvider) GetUserFromEmail(email string) (samlidp.IUser, error) {
+	if email == l.alice.Email{
+		return l.alice, nil
+	}else if email == l.bob.Email{
+		return l.bob, nil
+	}else{
+		return nil, errors.New("failed to find a user")
+	}
+}
+
+func (l LookupProvider) GetUserFromId(id string) (samlidp.IUser, error) {
+	if id == l.alice.Id{
+		return l.alice, nil
+	}else if id == l.bob.Id{
+		return l.bob, nil
+	}else{
+		return nil, errors.New("failed to find a user")
+	}
+}
+
+
+
+
 
